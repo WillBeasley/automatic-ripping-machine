@@ -112,6 +112,7 @@ class Job(db.Model):
     logfile = db.Column(db.String(256))
     start_time = db.Column(db.DateTime)
     stop_time = db.Column(db.DateTime)
+    rip_start_time = db.Column(db.DateTime)
     job_length = db.Column(db.String(12))
     status = db.Column(db.String(32))
     """Now that we have JobState, we should migrate this column.

@@ -16,7 +16,8 @@ import os
 import shlex
 import shutil
 import subprocess
-from time import sleep, time
+from datetime import datetime
+from time import sleep
 
 import arm.config.config as cfg
 from arm.models import SystemDrives, Track
@@ -649,6 +650,8 @@ def makemkv_backup(job, rawpath):
         f"disc:{job.drive.mdisc:d}",
         rawpath,
     ]
+    job.rip_start_time = datetime.now()
+    db.session.commit()
     logging.info("Backing up disc")
     collections.deque(run(cmd, OutputType.MSG), maxlen=0)
 
@@ -703,6 +706,8 @@ def makemkv_mkv(job, rawpath):
             rawpath,
             f"--minlength={job.config.MINLENGTH}",
         ]
+        job.rip_start_time = datetime.now()
+        db.session.commit()
         logging.info("Process all tracks from disc.")
         collections.deque(run(cmd, OutputType.MSG), maxlen=0)
     else:
@@ -783,6 +788,8 @@ def rip_mainfeature(job, track, rawpath):
         rawpath,
         f"--minlength={job.config.MINLENGTH}",
     ]
+    job.rip_start_time = datetime.now()
+    db.session.commit()
     logging.info("Ripping main feature")
     # Possibly update db to say track was ripped
     collections.deque(run(cmd, OutputType.MSG), maxlen=0)
@@ -820,36 +827,26 @@ def process_single_tracks(job, rawpath, mode: str):
     # Rip the track if the user has set it to rip, or in auto mode and the time is good
 
     tracks_to_process = [track for track in job.tracks if track.process]
+    progress_log_path = progress_log(job)
     process_index = 1
     for track in tracks_to_process:
         logging.info(f"Processing track #{process_index} of {len(tracks_to_process)}. "
                      f"Length is {track.length} seconds.")
         filepathname = os.path.join(rawpath, track.filename)
         logging.info(f"Ripping title {track.track_number} to {shlex.quote(filepathname)}")
-        logfile_base = progress_log(job)
         cmd = [
             "mkv",
         ]
         cmd += shlex.split(job.config.MKV_ARGS)
         cmd += [
             f"--minlength={job.config.MINLENGTH}",
-            f"--progress={logfile_base}",
+            f"--progress={progress_log_path}",
             f"dev:{job.devpath}",
             track.track_number,
             rawpath,
         ]
-        # Create a batch info file so the web gui can know when this process started, which track, and how many tracks
-        logging.debug(f"Saving batch position info for job {job.job_id}: "
-                      f"BINF:{int(time())},{process_index},{len(tracks_to_process)},0000"
-                      )
-        batch_info_file = logfile_base+".batchinfo"
-        if not os.path.exists(batch_info_file):
-            with open(batch_info_file, 'w') as f:
-                f.write(f"BINF:{int(time())},{process_index},{len(tracks_to_process)},0000")
-        else:
-            with open(batch_info_file, 'a') as f:
-                f.write(f"\nBINF:{int(time())},{process_index},{len(tracks_to_process)},0000")
-
+        job.rip_start_time = datetime.now()
+        db.session.commit()
         logging.debug("Starting to rip single track.")
         collections.deque(run(cmd, OutputType.MSG), maxlen=0)
         process_index += 1
@@ -927,7 +924,7 @@ def progress_log(job):
     """
     logfile = os.path.join(job.config.LOGPATH, "progress", f"{job.job_id:d}.log")
     logging.debug(f"logging progress to '{logfile}'")
-    return shlex.quote(logfile)
+    return logfile
 
 
 class TrackInfoProcessor:
